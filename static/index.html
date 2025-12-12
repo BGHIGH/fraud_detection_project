@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fraud Detection System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        .gradient-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .gradient-success { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+        .gradient-danger { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+        .gradient-warning { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="min-h-screen">
+        <!-- Header -->
+        <header class="gradient-primary text-white shadow-lg">
+            <div class="container mx-auto px-4 py-6">
+                <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-shield-alt text-3xl"></i>
+                        <h1 class="text-2xl md:text-3xl font-bold">Fraud Detection System</h1>
+                    </div>
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <span id="api-status" class="px-4 py-2 rounded-full text-sm font-semibold bg-white/20 backdrop-blur-sm">
+                            <i class="fas fa-circle text-xs"></i> <span>Checking...</span>
+                        </span>
+                        <button onclick="showBatchMode()" class="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-all backdrop-blur-sm">
+                            <i class="fas fa-layer-group"></i> Batch Mode
+                        </button>
+                        <button onclick="showHistory()" class="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-all backdrop-blur-sm">
+                            <i class="fas fa-history"></i> History
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="container mx-auto px-4 py-8 max-w-7xl">
+            <!-- Single Prediction Card -->
+            <div id="single-mode" class="bg-white rounded-2xl shadow-xl p-6 md:p-8 mb-6 transition-all hover:shadow-2xl">
+                <div class="border-b border-gray-200 pb-4 mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                        <i class="fas fa-search text-indigo-600"></i> Transaction Analysis
+                    </h2>
+                    <p class="text-gray-600 mt-2">Enter transaction details to detect potential fraud</p>
+                </div>
+                
+                <form id="prediction-form" method="POST" onsubmit="return false;">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+                        <!-- Transaction Amount -->
+                        <div>
+                            <label for="transaction_amount" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-dollar-sign text-indigo-600"></i> Transaction Amount *
+                            </label>
+                            <input type="number" id="transaction_amount" name="transaction_amount" 
+                                   step="0.01" min="0.01" required 
+                                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                                   placeholder="150.50">
+                        </div>
+
+                        <!-- Account Balance -->
+                        <div>
+                            <label for="account_balance" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-wallet text-indigo-600"></i> Account Balance *
+                            </label>
+                            <input type="number" id="account_balance" name="account_balance" 
+                                   step="0.01" min="0" required 
+                                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                                   placeholder="5000.00">
+                        </div>
+
+                        <!-- Transaction Type -->
+                        <div>
+                            <label for="transaction_type" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-exchange-alt text-indigo-600"></i> Transaction Type *
+                            </label>
+                            <select id="transaction_type" name="transaction_type" required 
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all">
+                                <option value="">Select type...</option>
+                                <option value="POS">POS</option>
+                                <option value="ATM Withdrawal">ATM Withdrawal</option>
+                                <option value="Online">Online</option>
+                                <option value="Transfer">Transfer</option>
+                                <option value="Payment">Payment</option>
+                            </select>
+                        </div>
+
+                        <!-- Device Type -->
+                        <div>
+                            <label for="device_type" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-mobile-alt text-indigo-600"></i> Device Type *
+                            </label>
+                            <select id="device_type" name="device_type" required 
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all">
+                                <option value="">Select device...</option>
+                                <option value="Mobile">Mobile</option>
+                                <option value="Laptop">Laptop</option>
+                                <option value="Tablet">Tablet</option>
+                                <option value="Desktop">Desktop</option>
+                            </select>
+                        </div>
+
+                        <!-- Location -->
+                        <div>
+                            <label for="location" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-map-marker-alt text-indigo-600"></i> Location *
+                            </label>
+                            <input type="text" id="location" name="location" required 
+                                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                                   placeholder="London">
+                        </div>
+
+                        <!-- Merchant Category -->
+                        <div>
+                            <label for="merchant_category" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-store text-indigo-600"></i> Merchant Category *
+                            </label>
+                            <input type="text" id="merchant_category" name="merchant_category" required 
+                                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                                   placeholder="Restaurants">
+                        </div>
+
+                        <!-- IP Address Flag -->
+                        <div>
+                            <label for="ip_address_flag" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-network-wired text-indigo-600"></i> IP Address Flag *
+                            </label>
+                            <select id="ip_address_flag" name="ip_address_flag" required 
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all">
+                                <option value="0">Normal (0)</option>
+                                <option value="1">Suspicious (1)</option>
+                            </select>
+                        </div>
+
+                        <!-- Previous Fraudulent Activity -->
+                        <div>
+                            <label for="previous_fraudulent_activity" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-exclamation-triangle text-indigo-600"></i> Previous Fraudulent Activity *
+                            </label>
+                            <input type="number" id="previous_fraudulent_activity" name="previous_fraudulent_activity" 
+                                   min="0" required 
+                                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                                   placeholder="0">
+                        </div>
+
+                        <!-- Daily Transaction Count -->
+                        <div>
+                            <label for="daily_transaction_count" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-calendar-day text-indigo-600"></i> Daily Transaction Count *
+                            </label>
+                            <input type="number" id="daily_transaction_count" name="daily_transaction_count" 
+                                   min="0" required 
+                                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                                   placeholder="5">
+                        </div>
+
+                        <!-- Avg Transaction Amount 7d -->
+                        <div>
+                            <label for="avg_transaction_amount_7d" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-chart-line text-indigo-600"></i> Avg Transaction Amount (7d) *
+                            </label>
+                            <input type="number" id="avg_transaction_amount_7d" name="avg_transaction_amount_7d" 
+                                   step="0.01" min="0" required 
+                                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                                   placeholder="120.30">
+                        </div>
+
+                        <!-- Failed Transaction Count 7d -->
+                        <div>
+                            <label for="failed_transaction_count_7d" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-times-circle text-indigo-600"></i> Failed Transactions (7d) *
+                            </label>
+                            <input type="number" id="failed_transaction_count_7d" name="failed_transaction_count_7d" 
+                                   step="0.01" min="0" required 
+                                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                                   placeholder="0.0">
+                        </div>
+
+                        <!-- Card Type -->
+                        <div>
+                            <label for="card_type" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-credit-card text-indigo-600"></i> Card Type *
+                            </label>
+                            <select id="card_type" name="card_type" required 
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all">
+                                <option value="">Select card...</option>
+                                <option value="Visa">Visa</option>
+                                <option value="Mastercard">Mastercard</option>
+                                <option value="Discover">Discover</option>
+                                <option value="Amex">Amex</option>
+                            </select>
+                        </div>
+
+                        <!-- Card Age -->
+                        <div>
+                            <label for="card_age" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-birthday-cake text-indigo-600"></i> Card Age (days) *
+                            </label>
+                            <input type="number" id="card_age" name="card_age" min="0" required 
+                                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                                   placeholder="365">
+                        </div>
+
+                        <!-- Transaction Distance -->
+                        <div>
+                            <label for="transaction_distance" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-route text-indigo-600"></i> Transaction Distance *
+                            </label>
+                            <input type="number" id="transaction_distance" name="transaction_distance" 
+                                   step="0.01" min="0" required 
+                                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                                   placeholder="1500.25">
+                        </div>
+
+                        <!-- Authentication Method -->
+                        <div>
+                            <label for="authentication_method" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-fingerprint text-indigo-600"></i> Authentication Method *
+                            </label>
+                            <select id="authentication_method" name="authentication_method" required 
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all">
+                                <option value="">Select method...</option>
+                                <option value="Biometric">Biometric</option>
+                                <option value="Password">Password</option>
+                                <option value="PIN">PIN</option>
+                                <option value="OTP">OTP</option>
+                            </select>
+                        </div>
+
+                        <!-- Risk Score -->
+                        <div class="md:col-span-2 lg:col-span-3">
+                            <label for="risk_score" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-exclamation-circle text-indigo-600"></i> Risk Score (0-1) *
+                            </label>
+                            <input type="number" id="risk_score" name="risk_score" 
+                                   step="0.01" min="0" max="1" required 
+                                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all mb-3"
+                                   placeholder="0.15">
+                            <input type="range" id="risk_score_slider" min="0" max="1" step="0.01" value="0.15" 
+                                   oninput="updateRiskScore(this.value)"
+                                   class="w-full h-2 bg-gradient-to-r from-green-500 via-yellow-500 to-red-500 rounded-lg appearance-none cursor-pointer">
+                            <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                <span>Low</span>
+                                <span>Medium</span>
+                                <span>High</span>
+                            </div>
+                        </div>
+
+                        <!-- Is Weekend -->
+                        <div>
+                            <label for="is_weekend" class="block text-sm font-semibold text-gray-700 mb-2">
+                                <i class="fas fa-calendar-week text-indigo-600"></i> Is Weekend *
+                            </label>
+                            <select id="is_weekend" name="is_weekend" required 
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all">
+                                <option value="0">No</option>
+                                <option value="1">Yes</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-4 pt-6 border-t border-gray-200">
+                        <button type="submit" class="gradient-primary text-white px-8 py-3 rounded-lg font-semibold hover:shadow-lg transition-all transform hover:-translate-y-0.5 flex items-center gap-2">
+                            <i class="fas fa-search"></i> Analyze Transaction
+                        </button>
+                        <button type="button" onclick="fillSampleData()" class="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-all flex items-center gap-2">
+                            <i class="fas fa-magic"></i> Fill Sample Data
+                        </button>
+                        <button type="reset" class="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:border-gray-400 transition-all flex items-center gap-2">
+                            <i class="fas fa-redo"></i> Reset Form
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Results Card -->
+            <div id="results-card" class="bg-white rounded-3xl shadow-2xl p-6 md:p-8 mb-6 transition-all transform" style="display: none;">
+                <div class="flex justify-between items-center border-b-2 border-gray-100 pb-6 mb-8">
+                    <h2 class="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent flex items-center gap-3">
+                        <i class="fas fa-chart-pie text-indigo-600"></i> Analysis Results
+                    </h2>
+                    <button onclick="closeResults()" class="text-gray-400 hover:text-gray-600 transition-all hover:rotate-90 transform duration-300">
+                        <i class="fas fa-times text-2xl"></i>
+                    </button>
+                </div>
+                
+                <div class="space-y-8">
+                    <!-- Fraud Status with 3D Effect -->
+                    <div id="fraud-status" class="relative rounded-2xl p-10 text-center text-white shadow-2xl transform transition-all hover:scale-105" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <div class="absolute inset-0 bg-white/10 rounded-2xl backdrop-blur-sm"></div>
+                        <div class="relative z-10">
+                            <div id="fraud-icon" class="text-6xl mb-4 transform transition-all"></div>
+                            <div id="fraud-title" class="text-3xl font-bold mb-3"></div>
+                            <div id="fraud-description" class="text-base opacity-90 mb-6"></div>
+                            <div class="inline-block bg-white/20 backdrop-blur-md rounded-xl p-4 border border-white/30">
+                                <div id="fraud-details" class="text-sm"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Key Metrics with 3D Cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="group relative">
+                            <div class="absolute -inset-1 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl blur opacity-25 group-hover:opacity-75 transition duration-1000"></div>
+                            <div class="relative gradient-primary rounded-2xl p-6 text-white shadow-xl transform transition-all hover:scale-105 hover:shadow-2xl">
+                                <div class="flex items-center gap-4">
+                                    <div class="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center text-3xl shadow-lg transform group-hover:rotate-12 transition-transform">
+                                        <i class="fas fa-percentage"></i>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-sm opacity-90 mb-2 font-semibold">Fraud Probability</h3>
+                                        <p id="fraud-probability" class="text-4xl font-bold">0%</p>
+                                    </div>
+                                </div>
+                                <div class="mt-4 h-2 bg-white/20 rounded-full overflow-hidden">
+                                    <div id="fraud-probability-bar" class="h-full bg-white rounded-full transition-all duration-1000" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="group relative">
+                            <div class="absolute -inset-1 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl blur opacity-25 group-hover:opacity-75 transition duration-1000"></div>
+                            <div class="relative gradient-success rounded-2xl p-6 text-white shadow-xl transform transition-all hover:scale-105 hover:shadow-2xl">
+                                <div class="flex items-center gap-4">
+                                    <div class="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center text-3xl shadow-lg transform group-hover:rotate-12 transition-transform">
+                                        <i class="fas fa-check-circle"></i>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-sm opacity-90 mb-2 font-semibold">Confidence</h3>
+                                        <p id="confidence" class="text-4xl font-bold">0%</p>
+                                    </div>
+                                </div>
+                                <div class="mt-4 h-2 bg-white/20 rounded-full overflow-hidden">
+                                    <div id="confidence-bar" class="h-full bg-white rounded-full transition-all duration-1000" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="group relative">
+                            <div class="absolute -inset-1 bg-gradient-to-r from-amber-500 to-orange-600 rounded-2xl blur opacity-25 group-hover:opacity-75 transition duration-1000"></div>
+                            <div class="relative gradient-warning rounded-2xl p-6 text-white shadow-xl transform transition-all hover:scale-105 hover:shadow-2xl">
+                                <div class="flex items-center gap-4">
+                                    <div class="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center text-3xl shadow-lg transform group-hover:rotate-12 transition-transform">
+                                        <i class="fas fa-clock"></i>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-sm opacity-90 mb-2 font-semibold">Response Time</h3>
+                                        <p id="response-time" class="text-4xl font-bold">0 ms</p>
+                                    </div>
+                                </div>
+                                <div class="mt-4 flex items-center gap-2 text-xs opacity-75">
+                                    <i class="fas fa-bolt"></i>
+                                    <span>Ultra Fast</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Section with 3D Effect -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- Main Chart -->
+                        <div class="relative group">
+                            <div class="absolute -inset-1 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 rounded-2xl blur opacity-20 group-hover:opacity-30 transition duration-1000"></div>
+                            <div class="relative bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-8 shadow-xl">
+                                <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                                    <i class="fas fa-chart-pie text-indigo-600"></i> Fraud Risk Distribution
+                                </h3>
+                                <div class="relative h-80">
+                                    <canvas id="fraud-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Risk Level Gauge -->
+                        <div class="relative group">
+                            <div class="absolute -inset-1 bg-gradient-to-r from-red-500 via-yellow-500 to-green-500 rounded-2xl blur opacity-20 group-hover:opacity-30 transition duration-1000"></div>
+                            <div class="relative bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-8 shadow-xl">
+                                <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                                    <i class="fas fa-gauge-high text-indigo-600"></i> Risk Level Gauge
+                                </h3>
+                                <div class="relative h-80 flex items-center justify-center">
+                                    <canvas id="risk-gauge-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Detailed Results with 3D Cards -->
+                    <div class="relative">
+                        <div class="absolute -inset-1 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl blur opacity-10"></div>
+                        <div class="relative bg-gradient-to-br from-gray-50 to-white rounded-2xl p-8 shadow-xl">
+                            <h3 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-3">
+                                <div class="w-10 h-10 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center text-white shadow-lg">
+                                    <i class="fas fa-info-circle"></i>
+                                </div>
+                                Detailed Information
+                            </h3>
+                            <div id="detailed-info" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Batch Mode Card -->
+            <div id="batch-mode" class="bg-white rounded-2xl shadow-xl p-6 md:p-8 mb-6" style="display: none;">
+                <div class="flex justify-between items-center border-b border-gray-200 pb-4 mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                        <i class="fas fa-layer-group text-indigo-600"></i> Batch Analysis
+                    </h2>
+                    <button onclick="showSingleMode()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                <div class="text-center py-12">
+                    <p class="text-gray-600 mb-6">Upload a CSV file or enter multiple transactions</p>
+                    <div class="flex justify-center gap-4 flex-wrap">
+                        <button onclick="showBatchForm()" class="gradient-primary text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg transition-all">
+                            <i class="fas fa-plus"></i> Add Transactions
+                        </button>
+                        <button onclick="document.getElementById('csv-upload').click()" class="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-all">
+                            <i class="fas fa-upload"></i> Upload CSV
+                        </button>
+                        <input type="file" id="csv-upload" accept=".csv" class="hidden" onchange="handleCSVUpload(event)">
+                    </div>
+                    <div id="batch-results" class="mt-8"></div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="fixed inset-0 bg-black/70 flex flex-col items-center justify-center z-50" style="display: none;">
+            <div class="w-16 h-16 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+            <p class="text-white mt-4 text-lg">Analyzing transaction...</p>
+        </div>
+
+        <!-- Toast Notifications -->
+        <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "name": "Fraud Detection API",
+  "description": "REST API for fraud detection using machine learning",
+  "repository": "https://github.com/yourusername/fraud-detection-api",
+  "keywords": ["fraud", "detection", "machine-learning", "api", "fastapi"],
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "env": {
+    "PYTHONUNBUFFERED": {
+      "value": "1"
+    }
+  }
+}
+

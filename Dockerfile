@@ -35,5 +35,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Run the application
 # Use PORT environment variable if set, otherwise default to 8000
-CMD uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}
+# Use shell form to allow variable expansion
+CMD sh -c "uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}"
 

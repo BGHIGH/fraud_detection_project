@@ -31,7 +31,7 @@ build:
     - echo "Pushing images to registry..."
     - docker push $IMAGE_TAG
     - docker push $IMAGE_TAG_LATEST
-    - echo "Build complete! Image: $IMAGE_TAG_LATEST"
+    - echo "✅ Build complete! Image: $IMAGE_TAG_LATEST"
   only:
     - main
     - master
@@ -104,7 +104,8 @@ deploy_render:
     - apk add --no-cache curl
   script:
     - echo "Triggering Render deployment..."
-    - 'curl -X POST "https://api.render.com/deploy/srv-$RENDER_SERVICE_ID?key=$RENDER_API_KEY" || echo "Render deployment triggered"'
+    - |
+      curl -X POST "https://api.render.com/deploy/srv-$RENDER_SERVICE_ID?key=$RENDER_API_KEY" || echo "Render deployment triggered"
   environment:
     name: production
     url: https://$RENDER_SERVICE_URL

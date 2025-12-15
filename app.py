@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, ConfigDict
 from typing import Optional, List
 import joblib
 import pandas as pd
@@ -36,28 +36,36 @@ async def lifespan(app: FastAPI):
     try:
         model_path = os.path.join("Models", "fraud_detection_model.pkl")
         logger.info(f"Loading model from {model_path}")
-        model = joblib.load(model_path)
-        logger.info("Model loaded successfully")
         
-        # Try to get feature names from model if available
-        if hasattr(model, 'feature_names_in_'):
-            feature_names = list(model.feature_names_in_)
+        # Check if file exists
+        if not os.path.exists(model_path):
+            logger.error(f"Model file not found at {model_path}")
+            logger.warning("App will start but prediction endpoints will return 503")
+            model = None
         else:
-            # Default feature names based on dataset structure
-            feature_names = [
-                'Transaction_Amount', 'Account_Balance', 'Previous_Fraudulent_Activity',
-                'Daily_Transaction_Count', 'Avg_Transaction_Amount_7d',
-                'Failed_Transaction_Count_7d', 'Card_Age', 'Transaction_Distance',
-                'Risk_Score', 'Is_Weekend', 'Transaction_Type', 'Device_Type',
-                'Location', 'Merchant_Category', 'IP_Address_Flag', 'Card_Type',
-                'Authentication_Method'
-            ]
-        
-        logger.info(f"Feature names: {feature_names}")
+            model = joblib.load(model_path)
+            logger.info("Model loaded successfully")
+            
+            # Try to get feature names from model if available
+            if hasattr(model, 'feature_names_in_'):
+                feature_names = list(model.feature_names_in_)
+            else:
+                # Default feature names based on dataset structure
+                feature_names = [
+                    'Transaction_Amount', 'Account_Balance', 'Previous_Fraudulent_Activity',
+                    'Daily_Transaction_Count', 'Avg_Transaction_Amount_7d',
+                    'Failed_Transaction_Count_7d', 'Card_Age', 'Transaction_Distance',
+                    'Risk_Score', 'Is_Weekend', 'Transaction_Type', 'Device_Type',
+                    'Location', 'Merchant_Category', 'IP_Address_Flag', 'Card_Type',
+                    'Authentication_Method'
+                ]
+            
+            logger.info(f"Feature names: {feature_names}")
         
     except Exception as e:
         logger.error(f"Error loading model: {str(e)}")
-        raise
+        logger.warning("App will start but prediction endpoints will return 503")
+        model = None
     
     yield
     
@@ -107,8 +115,8 @@ class TransactionRequest(BaseModel):
     amount_deviation: Optional[float] = Field(None, description="Amount deviation (auto-calculated)")
     risk_amount_interaction: Optional[float] = Field(None, description="Risk-amount interaction (auto-calculated)")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "transaction_amount": 150.50,
                 "avg_transaction_amount_7d": 120.30,
@@ -120,6 +128,7 @@ class TransactionRequest(BaseModel):
                 "month": 12
             }
         }
+    )
 
 
 class PredictionResponse(BaseModel):
@@ -140,7 +149,7 @@ class HealthResponse(BaseModel):
 
 class BatchPredictionRequest(BaseModel):
     """Batch prediction request"""
-    transactions: List[TransactionRequest] = Field(..., max_items=100, description="List of transactions (max 100)")
+    transactions: List[TransactionRequest] = Field(..., max_length=100, description="List of transactions (max 100)")
 
 
 class BatchPredictionResponse(BaseModel):

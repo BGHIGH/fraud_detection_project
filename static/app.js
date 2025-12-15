@@ -62,7 +62,10 @@ function validateField(field) {
 
 // Update risk score from slider
 function updateRiskScore(value) {
-    document.getElementById('risk_score').value = value;
+    const riskScoreInput = document.getElementById('risk_score');
+    if (riskScoreInput) {
+        riskScoreInput.value = value;
+    }
 }
 
 // Check API health
@@ -134,21 +137,51 @@ async function handleFormSubmit(event) {
     }
     
     const formData = new FormData(event.target);
-    const transaction = {};
     
-    // Convert form data to object
-    for (let [key, value] of formData.entries()) {
-        // Convert numeric fields
-        if (['transaction_amount', 'account_balance', 'avg_transaction_amount_7d', 
-             'failed_transaction_count_7d', 'transaction_distance', 'risk_score'].includes(key)) {
-            transaction[key] = parseFloat(value);
-        } else if (['ip_address_flag', 'previous_fraudulent_activity', 'daily_transaction_count',
-                    'card_age', 'is_weekend'].includes(key)) {
-            transaction[key] = parseInt(value);
-        } else {
-            transaction[key] = value;
-        }
+    // Convert form data to object - only collect required fields
+    const transaction_amount = parseFloat(formData.get('transaction_amount'));
+    const avg_transaction_amount_7d = parseFloat(formData.get('avg_transaction_amount_7d'));
+    const failed_transaction_count_7d = parseFloat(formData.get('failed_transaction_count_7d'));
+    const daily_transaction_count = parseInt(formData.get('daily_transaction_count'));
+    const risk_score = parseFloat(formData.get('risk_score'));
+    const card_age = parseInt(formData.get('card_age'));
+    
+    // Get hour and month (use current time if not provided)
+    let hour = formData.get('hour');
+    let month = formData.get('month');
+    if (!hour || hour === '') {
+        hour = new Date().getHours();
+    } else {
+        hour = parseInt(hour);
     }
+    if (!month || month === '') {
+        month = new Date().getMonth() + 1; // getMonth() returns 0-11
+    } else {
+        month = parseInt(month);
+    }
+    
+    // Calculate derived features
+    const high_failure_flag = failed_transaction_count_7d > 0 ? 1 : 0;
+    const failure_rate = daily_transaction_count > 0 ? failed_transaction_count_7d / daily_transaction_count : 0.0;
+    const amount_deviation = Math.abs(transaction_amount - avg_transaction_amount_7d);
+    const risk_amount_interaction = risk_score * transaction_amount;
+    
+    // Build transaction object with only required features
+    const transaction = {
+        transaction_amount: transaction_amount,
+        avg_transaction_amount_7d: avg_transaction_amount_7d,
+        failed_transaction_count_7d: failed_transaction_count_7d,
+        daily_transaction_count: daily_transaction_count,
+        risk_score: risk_score,
+        card_age: card_age,
+        hour: hour,
+        month: month,
+        // Derived features (will be calculated on backend too, but send for reference)
+        high_failure_flag: high_failure_flag,
+        failure_rate: failure_rate,
+        amount_deviation: amount_deviation,
+        risk_amount_interaction: risk_amount_interaction
+    };
     
     // Show loading
     showLoading();
@@ -163,11 +196,12 @@ async function handleFormSubmit(event) {
         });
         
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Prediction failed');
+            const errorData = await response.json().catch(() => ({ detail: 'Prediction failed' }));
+            throw new Error(errorData.detail || errorData.message || 'Prediction failed');
         }
         
         const result = await response.json();
+        console.log('Prediction result:', result); // Debug log
         displayResults(result, transaction);
         
         // Save to history
@@ -180,8 +214,12 @@ async function handleFormSubmit(event) {
         showToast('Transaction analyzed successfully!', 'success');
         
     } catch (error) {
-        showToast(`Error: ${error.message}`, 'error');
         console.error('Prediction error:', error);
+        showToast(`Error: ${error.message}`, 'error');
+        // Show error details in console for debugging
+        if (error.response) {
+            console.error('Response error:', error.response);
+        }
     } finally {
         hideLoading();
     }
@@ -189,12 +227,21 @@ async function handleFormSubmit(event) {
 
 // Display results
 function displayResults(result, transaction) {
+    console.log('Displaying results:', result, transaction); // Debug log
+    
     const resultsCard = document.getElementById('results-card');
     const fraudStatus = document.getElementById('fraud-status');
     const fraudProbability = document.getElementById('fraud-probability');
     const confidence = document.getElementById('confidence');
     const responseTime = document.getElementById('response-time');
     const detailedInfo = document.getElementById('detailed-info');
+    
+    // Check if elements exist
+    if (!resultsCard) {
+        console.error('Results card element not found!');
+        showToast('Error: Results card not found', 'error');
+        return;
+    }
     
     // Show results card
     resultsCard.style.display = 'block';
@@ -283,7 +330,7 @@ function displayResults(result, transaction) {
     updateChart(probability, result.confidence, riskLevel);
     updateRiskGauge(probability, riskLevel);
     
-    // Update detailed info with 3D card effect
+    // Update detailed info with 3D card effect - show only relevant features
     detailedInfo.innerHTML = `
         <div class="group relative bg-white p-5 rounded-xl border-l-4 border-indigo-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
             <div class="absolute inset-0 bg-gradient-to-r from-indigo-500/0 to-indigo-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
@@ -292,58 +339,58 @@ function displayResults(result, transaction) {
         </div>
         <div class="group relative bg-white p-5 rounded-xl border-l-4 border-indigo-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
             <div class="absolute inset-0 bg-gradient-to-r from-indigo-500/0 to-indigo-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <label class="text-xs text-gray-500 block mb-2 font-semibold">Account Balance</label>
-            <value class="text-lg font-bold text-gray-800 relative z-10">$${transaction.account_balance.toFixed(2)}</value>
-        </div>
-        <div class="group relative bg-white p-5 rounded-xl border-l-4 border-indigo-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
-            <div class="absolute inset-0 bg-gradient-to-r from-indigo-500/0 to-indigo-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <label class="text-xs text-gray-500 block mb-2 font-semibold">Transaction Type</label>
-            <value class="text-lg font-bold text-gray-800 relative z-10">${transaction.transaction_type}</value>
-        </div>
-        <div class="group relative bg-white p-5 rounded-xl border-l-4 border-indigo-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
-            <div class="absolute inset-0 bg-gradient-to-r from-indigo-500/0 to-indigo-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <label class="text-xs text-gray-500 block mb-2 font-semibold">Device Type</label>
-            <value class="text-lg font-bold text-gray-800 relative z-10">${transaction.device_type}</value>
-        </div>
-        <div class="group relative bg-white p-5 rounded-xl border-l-4 border-indigo-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
-            <div class="absolute inset-0 bg-gradient-to-r from-indigo-500/0 to-indigo-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <label class="text-xs text-gray-500 block mb-2 font-semibold">Location</label>
-            <value class="text-lg font-bold text-gray-800 relative z-10">${transaction.location}</value>
-        </div>
-        <div class="group relative bg-white p-5 rounded-xl border-l-4 border-indigo-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
-            <div class="absolute inset-0 bg-gradient-to-r from-indigo-500/0 to-indigo-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <label class="text-xs text-gray-500 block mb-2 font-semibold">Merchant Category</label>
-            <value class="text-lg font-bold text-gray-800 relative z-10">${transaction.merchant_category}</value>
+            <label class="text-xs text-gray-500 block mb-2 font-semibold">Avg Transaction Amount (7d)</label>
+            <value class="text-lg font-bold text-gray-800 relative z-10">$${transaction.avg_transaction_amount_7d.toFixed(2)}</value>
         </div>
         <div class="group relative bg-white p-5 rounded-xl border-l-4 border-red-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
             <div class="absolute inset-0 bg-gradient-to-r from-red-500/0 to-red-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <label class="text-xs text-gray-500 block mb-2 font-semibold">Failed Transactions (7d)</label>
+            <value class="text-lg font-bold text-red-600 relative z-10">${transaction.failed_transaction_count_7d}</value>
+        </div>
+        <div class="group relative bg-white p-5 rounded-xl border-l-4 border-indigo-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
+            <div class="absolute inset-0 bg-gradient-to-r from-indigo-500/0 to-indigo-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <label class="text-xs text-gray-500 block mb-2 font-semibold">Daily Transaction Count</label>
+            <value class="text-lg font-bold text-gray-800 relative z-10">${transaction.daily_transaction_count}</value>
+        </div>
+        <div class="group relative bg-white p-5 rounded-xl border-l-4 border-orange-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
+            <div class="absolute inset-0 bg-gradient-to-r from-orange-500/0 to-orange-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
             <label class="text-xs text-gray-500 block mb-2 font-semibold">Risk Score</label>
-            <value class="text-lg font-bold text-red-600 relative z-10">${(transaction.risk_score * 100).toFixed(2)}%</value>
-        </div>
-        <div class="group relative bg-white p-5 rounded-xl border-l-4 border-indigo-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
-            <div class="absolute inset-0 bg-gradient-to-r from-indigo-500/0 to-indigo-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <label class="text-xs text-gray-500 block mb-2 font-semibold">Authentication Method</label>
-            <value class="text-lg font-bold text-gray-800 relative z-10">${transaction.authentication_method}</value>
-        </div>
-        <div class="group relative bg-white p-5 rounded-xl border-l-4 border-indigo-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
-            <div class="absolute inset-0 bg-gradient-to-r from-indigo-500/0 to-indigo-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <label class="text-xs text-gray-500 block mb-2 font-semibold">Card Type</label>
-            <value class="text-lg font-bold text-gray-800 relative z-10">${transaction.card_type}</value>
+            <value class="text-lg font-bold text-orange-600 relative z-10">${(transaction.risk_score * 100).toFixed(2)}%</value>
         </div>
         <div class="group relative bg-white p-5 rounded-xl border-l-4 border-indigo-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
             <div class="absolute inset-0 bg-gradient-to-r from-indigo-500/0 to-indigo-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
             <label class="text-xs text-gray-500 block mb-2 font-semibold">Card Age</label>
             <value class="text-lg font-bold text-gray-800 relative z-10">${transaction.card_age} days</value>
         </div>
-        <div class="group relative bg-white p-5 rounded-xl border-l-4 border-orange-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
-            <div class="absolute inset-0 bg-gradient-to-r from-orange-500/0 to-orange-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <label class="text-xs text-gray-500 block mb-2 font-semibold">Previous Fraudulent Activity</label>
-            <value class="text-lg font-bold text-orange-600 relative z-10">${transaction.previous_fraudulent_activity}</value>
+        <div class="group relative bg-white p-5 rounded-xl border-l-4 border-green-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
+            <div class="absolute inset-0 bg-gradient-to-r from-green-500/0 to-green-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <label class="text-xs text-gray-500 block mb-2 font-semibold">High Failure Flag</label>
+            <value class="text-lg font-bold text-green-600 relative z-10">${transaction.high_failure_flag}</value>
         </div>
-        <div class="group relative bg-white p-5 rounded-xl border-l-4 border-red-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
-            <div class="absolute inset-0 bg-gradient-to-r from-red-500/0 to-red-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <label class="text-xs text-gray-500 block mb-2 font-semibold">Failed Transactions (7d)</label>
-            <value class="text-lg font-bold text-red-600 relative z-10">${transaction.failed_transaction_count_7d}</value>
+        <div class="group relative bg-white p-5 rounded-xl border-l-4 border-green-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
+            <div class="absolute inset-0 bg-gradient-to-r from-green-500/0 to-green-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <label class="text-xs text-gray-500 block mb-2 font-semibold">Failure Rate</label>
+            <value class="text-lg font-bold text-green-600 relative z-10">${(transaction.failure_rate * 100).toFixed(2)}%</value>
+        </div>
+        <div class="group relative bg-white p-5 rounded-xl border-l-4 border-green-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
+            <div class="absolute inset-0 bg-gradient-to-r from-green-500/0 to-green-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <label class="text-xs text-gray-500 block mb-2 font-semibold">Amount Deviation</label>
+            <value class="text-lg font-bold text-green-600 relative z-10">$${transaction.amount_deviation.toFixed(2)}</value>
+        </div>
+        <div class="group relative bg-white p-5 rounded-xl border-l-4 border-green-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
+            <div class="absolute inset-0 bg-gradient-to-r from-green-500/0 to-green-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <label class="text-xs text-gray-500 block mb-2 font-semibold">Risk-Amount Interaction</label>
+            <value class="text-lg font-bold text-green-600 relative z-10">${transaction.risk_amount_interaction.toFixed(2)}</value>
+        </div>
+        <div class="group relative bg-white p-5 rounded-xl border-l-4 border-indigo-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
+            <div class="absolute inset-0 bg-gradient-to-r from-indigo-500/0 to-indigo-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <label class="text-xs text-gray-500 block mb-2 font-semibold">Hour</label>
+            <value class="text-lg font-bold text-gray-800 relative z-10">${transaction.hour}</value>
+        </div>
+        <div class="group relative bg-white p-5 rounded-xl border-l-4 border-indigo-500 shadow-md hover:shadow-xl transition-all transform hover:-translate-y-1">
+            <div class="absolute inset-0 bg-gradient-to-r from-indigo-500/0 to-indigo-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <label class="text-xs text-gray-500 block mb-2 font-semibold">Month</label>
+            <value class="text-lg font-bold text-gray-800 relative z-10">${transaction.month}</value>
         </div>
     `;
 }
@@ -542,42 +589,39 @@ function updateRiskGauge(probability, riskLevel) {
 // Fill sample data
 function fillSampleData() {
     document.getElementById('transaction_amount').value = '150.50';
-    document.getElementById('account_balance').value = '5000.00';
-    document.getElementById('transaction_type').value = 'POS';
-    document.getElementById('device_type').value = 'Mobile';
-    document.getElementById('location').value = 'London';
-    document.getElementById('merchant_category').value = 'Restaurants';
-    document.getElementById('ip_address_flag').value = '0';
-    document.getElementById('previous_fraudulent_activity').value = '0';
-    document.getElementById('daily_transaction_count').value = '5';
     document.getElementById('avg_transaction_amount_7d').value = '120.30';
     document.getElementById('failed_transaction_count_7d').value = '0.0';
-    document.getElementById('card_type').value = 'Visa';
-    document.getElementById('card_age').value = '365';
-    document.getElementById('transaction_distance').value = '1500.25';
-    document.getElementById('authentication_method').value = 'PIN';
+    document.getElementById('daily_transaction_count').value = '5';
     document.getElementById('risk_score').value = '0.15';
     document.getElementById('risk_score_slider').value = '0.15';
-    document.getElementById('is_weekend').value = '0';
+    document.getElementById('card_age').value = '365';
+    // Leave hour and month empty to use current time
     
     showToast('Sample data filled!', 'success');
 }
 
 // Close results
 function closeResults() {
-    document.getElementById('results-card').style.display = 'none';
+    const resultsCard = document.getElementById('results-card');
+    if (resultsCard) {
+        resultsCard.style.display = 'none';
+    }
 }
 
 // Show single mode
 function showSingleMode() {
-    document.getElementById('batch-mode').style.display = 'none';
-    document.getElementById('single-mode').style.display = 'block';
+    const batchMode = document.getElementById('batch-mode');
+    const singleMode = document.getElementById('single-mode');
+    if (batchMode) batchMode.style.display = 'none';
+    if (singleMode) singleMode.style.display = 'block';
 }
 
 // Show batch mode
 function showBatchMode() {
-    document.getElementById('single-mode').style.display = 'none';
-    document.getElementById('batch-mode').style.display = 'block';
+    const singleMode = document.getElementById('single-mode');
+    const batchMode = document.getElementById('batch-mode');
+    if (singleMode) singleMode.style.display = 'none';
+    if (batchMode) batchMode.style.display = 'block';
 }
 
 // Show batch form
@@ -635,16 +679,16 @@ function showHistory() {
                                     <value class="text-sm font-semibold text-gray-800">$${item.transaction.transaction_amount.toFixed(2)}</value>
                                 </div>
                                 <div>
-                                    <label class="text-xs text-gray-500 block mb-1">Type:</label>
-                                    <value class="text-sm font-semibold text-gray-800">${item.transaction.transaction_type}</value>
+                                    <label class="text-xs text-gray-500 block mb-1">Risk Score:</label>
+                                    <value class="text-sm font-semibold text-gray-800">${(item.transaction.risk_score * 100).toFixed(1)}%</value>
                                 </div>
                                 <div>
                                     <label class="text-xs text-gray-500 block mb-1">Fraud Probability:</label>
                                     <value class="text-sm font-semibold ${prob > 50 ? 'text-red-600' : 'text-green-600'}">${prob}%</value>
                                 </div>
                                 <div>
-                                    <label class="text-xs text-gray-500 block mb-1">Location:</label>
-                                    <value class="text-sm font-semibold text-gray-800">${item.transaction.location}</value>
+                                    <label class="text-xs text-gray-500 block mb-1">Card Age:</label>
+                                    <value class="text-sm font-semibold text-gray-800">${item.transaction.card_age} days</value>
                                 </div>
                             </div>
                         </div>
@@ -682,11 +726,19 @@ function clearHistory() {
 
 // Loading overlay
 function showLoading() {
-    document.getElementById('loading-overlay').style.display = 'flex';
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) {
+        loadingOverlay.style.display = 'flex';
+    } else {
+        console.warn('Loading overlay element not found');
+    }
 }
 
 function hideLoading() {
-    document.getElementById('loading-overlay').style.display = 'none';
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) {
+        loadingOverlay.style.display = 'none';
+    }
 }
 
 // Toast notifications

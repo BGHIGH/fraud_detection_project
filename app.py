@@ -5,7 +5,7 @@ FastAPI application for fraud detection predictions
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List
@@ -91,73 +91,33 @@ except Exception as e:
 
 # Request/Response Models
 class TransactionRequest(BaseModel):
-    """Transaction data for fraud prediction"""
+    """Transaction data for fraud prediction - only essential features"""
     transaction_amount: float = Field(..., gt=0, description="Transaction amount")
-    account_balance: float = Field(..., ge=0, description="Account balance")
-    transaction_type: str = Field(..., description="Type of transaction")
-    device_type: str = Field(..., description="Device type used")
-    location: str = Field(..., description="Transaction location")
-    merchant_category: str = Field(..., description="Merchant category")
-    ip_address_flag: int = Field(..., ge=0, le=1, description="IP address flag (0 or 1)")
-    previous_fraudulent_activity: int = Field(..., ge=0, description="Previous fraudulent activity count")
-    daily_transaction_count: int = Field(..., ge=0, description="Daily transaction count")
     avg_transaction_amount_7d: float = Field(..., ge=0, description="Average transaction amount in last 7 days")
     failed_transaction_count_7d: float = Field(..., ge=0, description="Failed transaction count in last 7 days")
-    card_type: str = Field(..., description="Card type")
-    card_age: int = Field(..., ge=0, description="Card age in days")
-    transaction_distance: float = Field(..., ge=0, description="Transaction distance")
-    authentication_method: str = Field(..., description="Authentication method")
+    daily_transaction_count: int = Field(..., gt=0, description="Daily transaction count (must be > 0)")
     risk_score: float = Field(..., ge=0, le=1, description="Risk score (0-1)")
-    is_weekend: int = Field(..., ge=0, le=1, description="Is weekend (0 or 1)")
+    card_age: int = Field(..., ge=0, description="Card age in days")
+    hour: Optional[int] = Field(None, ge=0, le=23, description="Hour of day (0-23), defaults to current hour")
+    month: Optional[int] = Field(None, ge=1, le=12, description="Month (1-12), defaults to current month")
     
-    @validator('transaction_type')
-    def validate_transaction_type(cls, v):
-        allowed_types = ['ATM Withdrawal', 'POS', 'Online', 'Transfer', 'Payment']
-        if v not in allowed_types:
-            raise ValueError(f"Transaction type must be one of: {', '.join(allowed_types)}")
-        return v
-    
-    @validator('device_type')
-    def validate_device_type(cls, v):
-        allowed_devices = ['Mobile', 'Laptop', 'Tablet', 'Desktop']
-        if v not in allowed_devices:
-            raise ValueError(f"Device type must be one of: {', '.join(allowed_devices)}")
-        return v
-    
-    @validator('authentication_method')
-    def validate_auth_method(cls, v):
-        allowed_methods = ['Biometric', 'Password', 'PIN', 'OTP']
-        if v not in allowed_methods:
-            raise ValueError(f"Authentication method must be one of: {', '.join(allowed_methods)}")
-        return v
-    
-    @validator('card_type')
-    def validate_card_type(cls, v):
-        allowed_cards = ['Visa', 'Mastercard', 'Discover', 'Amex']
-        if v not in allowed_cards:
-            raise ValueError(f"Card type must be one of: {', '.join(allowed_cards)}")
-        return v
+    # Optional derived features (can be sent from frontend or calculated on backend)
+    high_failure_flag: Optional[int] = Field(None, description="High failure flag (auto-calculated)")
+    failure_rate: Optional[float] = Field(None, description="Failure rate (auto-calculated)")
+    amount_deviation: Optional[float] = Field(None, description="Amount deviation (auto-calculated)")
+    risk_amount_interaction: Optional[float] = Field(None, description="Risk-amount interaction (auto-calculated)")
     
     class Config:
         json_schema_extra = {
             "example": {
                 "transaction_amount": 150.50,
-                "account_balance": 5000.00,
-                "transaction_type": "POS",
-                "device_type": "Mobile",
-                "location": "London",
-                "merchant_category": "Restaurants",
-                "ip_address_flag": 0,
-                "previous_fraudulent_activity": 0,
-                "daily_transaction_count": 5,
                 "avg_transaction_amount_7d": 120.30,
                 "failed_transaction_count_7d": 0.0,
-                "card_type": "Visa",
-                "card_age": 365,
-                "transaction_distance": 1500.25,
-                "authentication_method": "PIN",
+                "daily_transaction_count": 5,
                 "risk_score": 0.15,
-                "is_weekend": 0
+                "card_age": 365,
+                "hour": 14,
+                "month": 12
             }
         }
 
@@ -196,28 +156,28 @@ def preprocess_transaction(transaction: TransactionRequest) -> pd.DataFrame:
     """Convert transaction request to DataFrame with proper feature order"""
     from datetime import datetime
     
-    # Get current time for Hour and Month if not provided
+    # Get Hour and Month (use provided values or current time)
     now = datetime.now()
-    hour = now.hour
-    month = now.month
+    hour = transaction.hour if transaction.hour is not None else now.hour
+    month = transaction.month if transaction.month is not None else now.month
     
-    # Calculate derived features
+    # Calculate derived features (use provided values if sent, otherwise calculate)
     failed_count = transaction.failed_transaction_count_7d
     daily_count = transaction.daily_transaction_count
     
     # High_Failure_Flag: 1 if failed transactions > 0, else 0
-    high_failure_flag = 1 if failed_count > 0 else 0
+    high_failure_flag = transaction.high_failure_flag if transaction.high_failure_flag is not None else (1 if failed_count > 0 else 0)
     
     # Failure_Rate: failed transactions / daily transactions (avoid division by zero)
-    failure_rate = failed_count / daily_count if daily_count > 0 else 0.0
+    failure_rate = transaction.failure_rate if transaction.failure_rate is not None else (failed_count / daily_count if daily_count > 0 else 0.0)
     
     # Amount_Deviation: difference between current and average
-    amount_deviation = abs(transaction.transaction_amount - transaction.avg_transaction_amount_7d)
+    amount_deviation = transaction.amount_deviation if transaction.amount_deviation is not None else abs(transaction.transaction_amount - transaction.avg_transaction_amount_7d)
     
     # Risk_Amount_Interaction: interaction between risk score and amount
-    risk_amount_interaction = transaction.risk_score * transaction.transaction_amount
+    risk_amount_interaction = transaction.risk_amount_interaction if transaction.risk_amount_interaction is not None else (transaction.risk_score * transaction.transaction_amount)
     
-    # Build feature dictionary matching model expectations
+    # Build feature dictionary matching model expectations (exact order)
     data = {
         'Failed_Transaction_Count_7d': [failed_count],
         'Risk_Score': [transaction.risk_score],
@@ -259,6 +219,12 @@ async def add_process_time_header(request: Request, call_next):
     response.headers["X-Process-Time"] = str(process_time)
     return response
 
+
+# Serve favicon
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Serve favicon"""
+    return Response(content="", media_type="image/svg+xml")
 
 # Serve web interface at root
 @app.get("/", tags=["Web Interface"], include_in_schema=False)
@@ -303,23 +269,23 @@ async def predict_fraud(transaction: TransactionRequest):
     """
     Predict fraud for a single transaction
     
+    **Required Features:**
     - **transaction_amount**: Amount of the transaction
-    - **account_balance**: Current account balance
-    - **transaction_type**: Type of transaction (ATM Withdrawal, POS, Online, Transfer, Payment)
-    - **device_type**: Device used (Mobile, Laptop, Tablet, Desktop)
-    - **location**: Transaction location
-    - **merchant_category**: Merchant category
-    - **ip_address_flag**: IP address flag (0 or 1)
-    - **previous_fraudulent_activity**: Count of previous fraudulent activities
-    - **daily_transaction_count**: Number of transactions today
     - **avg_transaction_amount_7d**: Average transaction amount in last 7 days
     - **failed_transaction_count_7d**: Failed transactions in last 7 days
-    - **card_type**: Type of card (Visa, Mastercard, Discover, Amex)
-    - **card_age**: Age of card in days
-    - **transaction_distance**: Distance of transaction
-    - **authentication_method**: Authentication method (Biometric, Password, PIN, OTP)
+    - **daily_transaction_count**: Number of transactions today (used to calculate failure rate)
     - **risk_score**: Risk score (0-1)
-    - **is_weekend**: Is weekend (0 or 1)
+    - **card_age**: Age of card in days
+    
+    **Optional Features (auto-calculated if not provided):**
+    - **hour**: Hour of day (0-23), defaults to current hour
+    - **month**: Month (1-12), defaults to current month
+    
+    **Derived Features (calculated automatically):**
+    - High_Failure_Flag: 1 if failed_transaction_count_7d > 0, else 0
+    - Failure_Rate: failed_transaction_count_7d / daily_transaction_count
+    - Amount_Deviation: |transaction_amount - avg_transaction_amount_7d|
+    - Risk_Amount_Interaction: risk_score * transaction_amount
     """
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")

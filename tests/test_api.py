@@ -4,14 +4,39 @@ Unit tests for Fraud Detection API
 
 import pytest
 from fastapi.testclient import TestClient
-from app import app, model
+from app import app
 import time
 import os
 
 client = TestClient(app)
 
 # Check if model is available
-MODEL_AVAILABLE = model is not None and os.path.exists("Models/fraud_detection_model.pkl")
+def is_model_available():
+    """Check if model is loaded by querying health endpoint or checking file"""
+    # First check if file exists
+    if not os.path.exists("Models/fraud_detection_model.pkl"):
+        return False
+    # Then check health endpoint
+    try:
+        response = client.get("/health")
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("model_loaded", False)
+    except Exception:
+        pass
+    return False
+
+# Create a pytest fixture for model availability
+@pytest.fixture(scope="session")
+def model_available():
+    """Fixture to check if model is available"""
+    return is_model_available()
+
+# For use in skipif decorators
+def pytest_configure(config):
+    """Configure pytest to check model availability"""
+    # This runs once at test collection time
+    pass
 
 
 class TestHealthCheck:
@@ -71,7 +96,7 @@ class TestSinglePrediction:
             "is_weekend": 0
         }
     
-    @pytest.mark.skipif(not MODEL_AVAILABLE, reason="Model file not available")
+    @pytest.mark.skipif(not is_model_available(), reason="Model file not available")
     def test_valid_prediction(self, valid_transaction):
         """Test prediction with valid data"""
         response = client.post("/predict", json=valid_transaction)
@@ -86,7 +111,7 @@ class TestSinglePrediction:
         assert isinstance(data["is_fraud"], bool)
         assert 0 <= data["confidence"] <= 1
     
-    @pytest.mark.skipif(not MODEL_AVAILABLE, reason="Model file not available")
+    @pytest.mark.skipif(not is_model_available(), reason="Model file not available")
     def test_prediction_response_time(self, valid_transaction):
         """Test that response time is reasonable"""
         start = time.time()
@@ -183,7 +208,7 @@ class TestBatchPrediction:
             "is_weekend": 0
         }
     
-    @pytest.mark.skipif(not MODEL_AVAILABLE, reason="Model file not available")
+    @pytest.mark.skipif(not is_model_available(), reason="Model file not available")
     def test_batch_prediction(self, valid_transaction):
         """Test batch prediction with multiple transactions"""
         batch_request = {
@@ -199,7 +224,7 @@ class TestBatchPrediction:
         assert len(data["predictions"]) == 3
         assert data["total_transactions"] == 3
     
-    @pytest.mark.skipif(not MODEL_AVAILABLE, reason="Model file not available")
+    @pytest.mark.skipif(not is_model_available(), reason="Model file not available")
     def test_batch_prediction_empty(self):
         """Test batch prediction with empty list"""
         batch_request = {"transactions": []}
@@ -233,7 +258,7 @@ class TestBatchPrediction:
 class TestDifferentTransactionTypes:
     """Test API with different types of transactions"""
     
-    @pytest.mark.skipif(not MODEL_AVAILABLE, reason="Model file not available")
+    @pytest.mark.skipif(not is_model_available(), reason="Model file not available")
     def test_atm_withdrawal(self):
         """Test ATM withdrawal transaction"""
         transaction = {
@@ -258,7 +283,7 @@ class TestDifferentTransactionTypes:
         response = client.post("/predict", json=transaction)
         assert response.status_code == 200
     
-    @pytest.mark.skipif(not MODEL_AVAILABLE, reason="Model file not available")
+    @pytest.mark.skipif(not is_model_available(), reason="Model file not available")
     def test_online_transaction(self):
         """Test online transaction"""
         transaction = {
@@ -283,7 +308,7 @@ class TestDifferentTransactionTypes:
         response = client.post("/predict", json=transaction)
         assert response.status_code == 200
     
-    @pytest.mark.skipif(not MODEL_AVAILABLE, reason="Model file not available")
+    @pytest.mark.skipif(not is_model_available(), reason="Model file not available")
     def test_high_risk_transaction(self):
         """Test high-risk transaction"""
         transaction = {
@@ -311,7 +336,7 @@ class TestDifferentTransactionTypes:
         # High risk transaction should have higher fraud probability
         assert data["fraud_probability"] > 0.5
     
-    @pytest.mark.skipif(not MODEL_AVAILABLE, reason="Model file not available")
+    @pytest.mark.skipif(not is_model_available(), reason="Model file not available")
     def test_low_risk_transaction(self):
         """Test low-risk transaction"""
         transaction = {

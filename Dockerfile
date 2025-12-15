@@ -18,4 +18,6 @@ RUN chmod +x start.sh
 
 EXPOSE 8000
 
-CMD ["./start.sh"]
+# Use shell form to allow variable expansion
+# Use shell form to ensure PORT variable is expanded
+CMD ["sh", "-c", "./start.sh"]

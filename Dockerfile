@@ -26,6 +26,9 @@ COPY . .
 # Create directories if they don't exist
 RUN mkdir -p Models Data
 
+# Make startup script executable
+RUN chmod +x /app/start.sh
+
 # Expose port
 EXPOSE 8000
 
@@ -33,8 +36,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8000/health')"
 
-# Run the application
-# Use PORT environment variable if set, otherwise default to 8000
-# Use shell form to allow variable expansion
-CMD sh -c "uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}"
+# Run the application using startup script
+# The script handles PORT environment variable correctly
+CMD ["/app/start.sh"]
 

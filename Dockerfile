@@ -14,10 +14,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY . .
 
 RUN mkdir -p Models Data
-RUN chmod +x start.sh
 
 EXPOSE 8000
 
-# Use shell form to allow variable expansion
-# Use shell form to ensure PORT variable is expanded
-CMD ["sh", "-c", "./start.sh"]
+# Run app - Railway sets PORT automatically
+# Use Python to read PORT from environment variable
+CMD python -c "import os; port = int(os.environ.get('PORT', 8000)); import uvicorn; uvicorn.run('app:app', host='0.0.0.0', port=port)"
